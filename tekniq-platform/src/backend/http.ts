@@ -42,7 +42,8 @@ async function call(url: string, init: RequestInit & { raw?: boolean } = {}, ret
   if (session && session.expires_at - 30 < Date.now() / 1000) await refresh();
   const headers = new Headers(init.headers);
   headers.set('apikey', anon());
-  headers.set('Authorization', 'Bearer ' + (session?.access_token || anon()));
+  // New-style publishable keys (sb_publishable_…) are not JWTs: send them only as `apikey`.
+  { const t = session?.access_token || (anon().startsWith('eyJ') ? anon() : ''); if (t) headers.set('Authorization', 'Bearer ' + t); }
   const r = await fetch(url, { ...init, headers });
   if (r.status === 401 && retry && session && (await refresh())) return call(url, init, false);
   return r;
@@ -67,7 +68,7 @@ export async function rest<T = any>(path: string, o: { method?: string; body?: u
   return data;
 }
 export async function invokeFn<T = any>(name: string, body: unknown): Promise<T> {
-  const r = await fetch(`${base()}/functions/v1/${name}`, { method: 'POST', headers: { apikey: anon(), Authorization: 'Bearer ' + (session?.access_token ?? anon()), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await fetch(`${base()}/functions/v1/${name}`, { method: 'POST', headers: { apikey: anon(), ...((session?.access_token || anon().startsWith('eyJ')) ? { Authorization: 'Bearer ' + (session?.access_token || anon()) } : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new ApiError(j.error || 'function_failed', r.status);
   return j as T;
